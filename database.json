@@ -1,0 +1,29 @@
+{
+  "status": "Undetected",
+  "risk": "Low",
+  "version": "1.5",
+  "message": "Update 1.5: Added Aimbot logic",
+  "users": {
+    "Kuka": {
+      "password": "123",
+      "status": "Admin",
+      "hwid": "RESET", 
+      "avatar_url": "https://imgur.com/gallery/SP4E3xr,
+      "expiry": "Lifetime"
+    },
+    "UserFree": {
+      "password": "000",
+      "status": "Free",
+      "hwid": "RESET",
+      "avatar_url": "",
+      "expiry": "2025-01-01"
+    },
+    "Tester1": {
+      "password": "321",
+      "status": "Tester",
+      "hwid": "RESET",
+      "avatar_url": "",
+      "expiry": "2024-12-30"
+    }
+  }
+}
