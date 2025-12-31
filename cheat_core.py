@@ -1,5 +1,5 @@
 # cheat_core.py
-# FIX 3.0: ИСПРАВЛЕНА ЛОГИКА BLUETOOTH TECH (Синхронизация с рабочим скриптом)
+# FIX 4.0: PERFECT SYNC (PAUSE=0, Threaded Execution)
 
 import glfw
 import OpenGL.GL as gl
@@ -15,6 +15,10 @@ import os
 import pydirectinput
 import requests
 
+# === ВАЖНЕЙШАЯ НАСТРОЙКА ИЗ ТВОЕГО СКРИПТА ===
+pydirectinput.PAUSE = 0  # Убирает задержку между действиями ввода
+# ==============================================
+
 # ==========================================
 # 1. ПОЛУЧЕНИЕ ДАННЫХ
 # ==========================================
@@ -29,7 +33,7 @@ if not CTX_DATABASE:
             "Insta_Hugtech": {"name": "Insta Hug tech", "allow": "Admin, Tester, Free", "pin": "none"}
         },
         "news": [
-            {"title": "Fix 3.0 Applied", "content": "Bluetooth Tech timings synced with reference script."}
+            {"title": "Fix 4.0 Perfect Sync", "content": "pydirectinput.PAUSE = 0 enabled. Logic is now 1:1 with reference."}
         ]
     }
 
@@ -57,9 +61,10 @@ config = {
 
     # --- SETTINGS (Insta Bluetooth Tech) ---
     "bt_rotation": 400.0,
-    "bt_long_wait": 1.83, # Как в рабочем скрипте
-    "bt_short_wait": 0.40, # Как в рабочем скрипте
-    "bt_end_wait": 2.00,   # НОВОЕ: Удержание кнопок в конце
+    "bt_long_wait": 1.83, # Как в скрипте
+    "bt_short_wait": 0.40, # Как в скрипте
+    "bt_click_dur": 0.05,  # Клик 0.05
+    "bt_end_wait": 2.00,   # Удержание в конце 2 сек
     
     # --- LAG SWITCH ---
     "lag_enabled": False,     
@@ -94,50 +99,55 @@ def on_key_event(e):
 keyboard.hook(on_key_event)
 
 # ==========================================
-# 4. ЛОГИКА МАКРОСОВ (ИСПРАВЛЕННАЯ)
+# 4. ЛОГИКА МАКРОСОВ (ТОЧЬ-В-ТОЧЬ)
 # ==========================================
-def perform_bt_sequence(right=True):
+def perform_bt_sequence(right):
     """
-    Полная копия логики из твоего рабочего скрипта.
+    Эта функция запускается в отдельном потоке, как в твоем скрипте.
     """
+    # Забираем актуальные настройки
     rot = int(config["bt_rotation"])
-    
+    long_w = config["bt_long_wait"]
+    short_w = config["bt_short_wait"]
+    click_d = config["bt_click_dur"]
+    end_w = config["bt_end_wait"]
+
     # 1. Зажимаем ПКМ
     pydirectinput.mouseDown(button='right')
-    time.sleep(config["bt_long_wait"]) # Ждем 1.83
+    time.sleep(long_w) # 1.83
     
-    # 2. Первый клик ЛКМ (Ручной режим 0.05с)
+    # 2. ПЕРВЫЙ КЛИК ЛКМ
     pydirectinput.mouseDown(button='left')
-    time.sleep(0.05)
+    time.sleep(click_d) # 0.05
     pydirectinput.mouseUp(button='left')
     
-    # 3. Зажимаем клавиши (A+W или D+W)
-    if right: 
+    # 3. ЗАЖИМАЕМ КНОПКИ
+    if right:
         pydirectinput.keyDown('a')
         pydirectinput.keyDown('w')
-    else: 
+    else:
         pydirectinput.keyDown('d')
         pydirectinput.keyDown('w')
         
-    time.sleep(config["bt_short_wait"]) # Ждем 0.40
+    time.sleep(short_w) # 0.40
     
-    # 4. Поворот мыши (уже после зажатия кнопок)
+    # 4. ПОВОРОТ
     move_val = rot if right else -rot
     pydirectinput.moveRel(move_val, 0, relative=True, _pause=False)
     
-    # 5. Второй клик ЛКМ
+    # 5. ВТОРОЙ КЛИК ЛКМ (Теперь без задержки перед ним, т.к. PAUSE=0)
     pydirectinput.mouseDown(button='left')
-    time.sleep(0.05)
+    time.sleep(click_d) # 0.05
     pydirectinput.mouseUp(button='left')
     
-    # 6. Удержание клавиш в конце (Самое важное отличие!)
-    time.sleep(config["bt_end_wait"]) # Ждем 2.0 секунды
+    # 6. ДЕРЖИМ КЛАВИШИ (2 сек)
+    time.sleep(end_w)
     
-    # 7. Отпускаем всё
-    if right: 
+    # 7. ОТПУСКАЕМ
+    if right:
         pydirectinput.keyUp('a')
         pydirectinput.keyUp('w')
-    else: 
+    else:
         pydirectinput.keyUp('d')
         pydirectinput.keyUp('w')
         
@@ -152,18 +162,23 @@ def logic_thread():
     while config["running"]:
         # --- Insta Bluetooth Tech ---
         if config["macros"].get("Insta_Bluetooth_Tech", {}).get("enabled", False):
-            # Правая сторона (E)
+            
+            # --- RIGHT (E) ---
             if keyboard.is_pressed(config["bt_bind_right"]):
-                # Сначала рывок мышью в обратную сторону (Pre-move)
+                # 1. Сначала дергаем мышь (Pre-move)
                 pydirectinput.moveRel(-int(config["bt_rotation"]), 0, relative=True, _pause=False)
-                # Затем запускаем последовательность
-                perform_bt_sequence(right=True)
-                time.sleep(0.5) # Небольшая защита от повторного срабатывания
-                
-            # Левая сторона (Q)
+                # 2. Запускаем последовательность В НОВОМ ПОТОКЕ (как в твоем скрипте)
+                # Это гарантирует, что тайминги внутри функции не собьются основным циклом
+                t = threading.Thread(target=perform_bt_sequence, args=(True,))
+                t.start()
+                # 3. Ждем немного, чтобы не спамить (защита от дребезга)
+                time.sleep(0.5)
+
+            # --- LEFT (Q) ---
             elif keyboard.is_pressed(config["bt_bind_left"]):
                 pydirectinput.moveRel(int(config["bt_rotation"]), 0, relative=True, _pause=False)
-                perform_bt_sequence(right=False)
+                t = threading.Thread(target=perform_bt_sequence, args=(False,))
+                t.start()
                 time.sleep(0.5)
 
         # --- Insta Hug Tech ---
@@ -192,7 +207,7 @@ def logic_thread():
                     try: winsound.Beep(600, 200)
                     except: pass
 
-        time.sleep(0.01)
+        time.sleep(0.001) # Уменьшил sleep для более быстрой реакции
 
 # ==========================================
 # 5. UI КОМПОНЕНТЫ
@@ -203,14 +218,12 @@ def apply_raku_theme():
     style.window_border_size = 0.0
     style.child_border_size = 0.0
     style.window_rounding = 8.0
-    
     colors[imgui.COLOR_WINDOW_BACKGROUND] = (0, 0, 0, 0)
     colors[imgui.COLOR_BORDER] = (0, 0, 0, 0)
     colors[imgui.COLOR_TEXT] = (0.90, 0.90, 0.90, 1.00)
     colors[imgui.COLOR_BUTTON] = (0.15, 0.15, 0.18, 1.00)
     colors[imgui.COLOR_BUTTON_HOVERED] = (0.20, 0.20, 0.24, 1.00)
     colors[imgui.COLOR_BUTTON_ACTIVE] = (0.25, 0.25, 0.30, 1.00)
-    colors[imgui.COLOR_HEADER] = (0.20, 0.20, 0.25, 1.00)
 
 def draw_icon(draw_list, x, y, icon_type, color):
     c = imgui.get_color_u32_rgba(*color)
@@ -249,9 +262,7 @@ def render_custom_toggle(label, state):
     imgui.push_style_var(imgui.STYLE_FRAME_ROUNDING, 12.0)
     p = imgui.get_cursor_screen_pos()
     draw_list = imgui.get_window_draw_list()
-    height = 24
-    width = 45
-    radius = height / 2
+    height = 24; width = 45; radius = height / 2
     if imgui.invisible_button(label, width, height): state = not state
     col_bg = imgui.get_color_u32_rgba(0.26, 0.40, 0.90, 1.0) if state else imgui.get_color_u32_rgba(0.2, 0.2, 0.2, 1.0)
     draw_list.add_rect_filled(p.x, p.y, p.x + width, p.y + height, col_bg, radius)
@@ -261,15 +272,14 @@ def render_custom_toggle(label, state):
     return state
 
 def render_keybind(label, bind_key_key, width=80):
-    is_binding = config["binding_mode"] == bind_key_key
     if bind_key_key not in config: config[bind_key_key] = "NONE"
-    btn_text = "..." if is_binding else f"[{config[bind_key_key]}]"
+    btn_text = "..." if config["binding_mode"] == bind_key_key else f"[{config[bind_key_key]}]"
     if imgui.button(f"{btn_text}##{bind_key_key}", width, 24): config["binding_mode"] = bind_key_key
     if label: imgui.same_line(); imgui.text(label)
 
 def render_custom_slider(label, val, v_min, v_max):
     imgui.text(label); imgui.same_line(120); imgui.push_item_width(200)
-    changed, new_val = imgui.slider_float(f"##{label}", val, v_min, v_max)
+    _, new_val = imgui.slider_float(f"##{label}", val, v_min, v_max)
     imgui.pop_item_width()
     return new_val
 
@@ -283,29 +293,22 @@ def render_menu(w_screen, h_screen):
     flags = imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_SCROLLBAR
     imgui.begin("Main", True, flags)
     
-    p_min = imgui.get_window_position()
-    p_max = (p_min.x + menu_w, p_min.y + menu_h)
-    draw_list = imgui.get_window_draw_list()
+    p = imgui.get_window_position()
+    dl = imgui.get_window_draw_list()
+    dl.add_rect_filled(p.x, p.y, p.x + menu_w, p.y + menu_h, imgui.get_color_u32_rgba(0.05, 0.05, 0.07, 1.0), 10.0)
+    dl.add_rect_filled(p.x, p.y, p.x + 200, p.y + menu_h, imgui.get_color_u32_rgba(0.03, 0.03, 0.04, 1.0), 10.0, flags=imgui.DRAW_CORNER_TOP_LEFT | imgui.DRAW_CORNER_BOTTOM_LEFT)
+    dl.add_line(p.x + 200, p.y, p.x + 200, p.y + menu_h, imgui.get_color_u32_rgba(0.15, 0.15, 0.18, 1.0))
     
-    draw_list.add_rect_filled(p_min.x, p_min.y, p_max[0], p_max[1], imgui.get_color_u32_rgba(0.05, 0.05, 0.07, 1.0), 10.0)
-    draw_list.add_rect_filled(p_min.x, p_min.y, p_min.x + 200, p_max[1], imgui.get_color_u32_rgba(0.03, 0.03, 0.04, 1.0), 10.0, flags=imgui.DRAW_CORNER_TOP_LEFT | imgui.DRAW_CORNER_BOTTOM_LEFT)
-    draw_list.add_line(p_min.x + 200, p_min.y, p_min.x + 200, p_max[1], imgui.get_color_u32_rgba(0.15, 0.15, 0.18, 1.0))
-    
-    # --- SIDEBAR ---
     imgui.begin_group()
-    imgui.dummy(0, 30); imgui.indent(10)
-    imgui.text_colored("Raku", 1, 1, 1, 1); imgui.dummy(0, 30)
+    imgui.dummy(0, 30); imgui.indent(10); imgui.text_colored("Raku", 1, 1, 1, 1); imgui.dummy(0, 30)
     imgui.text_colored("Game", 0.3, 0.3, 0.3, 1.0)
-    render_sidebar_btn("Macro", "Macro", "macro")
-    render_sidebar_btn("Lag Switch", "Lag Switch", "lag")
+    render_sidebar_btn("Macro", "Macro", "macro"); render_sidebar_btn("Lag Switch", "Lag Switch", "lag")
     imgui.dummy(0, 10); imgui.text_colored("Visuals", 0.3, 0.3, 0.3, 1.0)
-    render_sidebar_btn("Crosshair", "Crosshair", "crosshair")
-    render_sidebar_btn("Changer", "Changer", "skin")
+    render_sidebar_btn("Crosshair", "Crosshair", "crosshair"); render_sidebar_btn("Changer", "Changer", "skin")
     imgui.dummy(0, 10); imgui.text_colored("Other", 0.3, 0.3, 0.3, 1.0)
     render_sidebar_btn("Info / News", "Info", "info")
     imgui.unindent(10); imgui.end_group(); imgui.same_line()
     
-    # --- CONTENT ---
     imgui.begin_group()
     imgui.dummy(0, 20); imgui.indent(20)
     
@@ -324,34 +327,26 @@ def render_menu(w_screen, h_screen):
             if is_allowed:
                 m_state = config["macros"][key]
                 if pin != "none" and not m_state["unlocked"]:
-                    if imgui.button(f"UNLOCK (PIN)##{key}"):
-                        config["pin_target"] = key
-                        config["popup_open_request"] = True
+                    if imgui.button(f"UNLOCK (PIN)##{key}"): config["pin_target"] = key; config["popup_open_request"] = True
                 else:
                     imgui.set_cursor_pos_y(15); imgui.dummy(330, 0); imgui.same_line()
                     if key == "Insta_Hugtech": render_keybind("", "bind_Insta_Hugtech", width=60); imgui.same_line()
-                    new_state = render_custom_toggle(f"##tgl_{key}", m_state["enabled"])
-                    if new_state != m_state["enabled"]: m_state["enabled"] = new_state
+                    m_state["enabled"] = render_custom_toggle(f"##tgl_{key}", m_state["enabled"])
                     if key == "Insta_Bluetooth_Tech":
                         imgui.same_line(); 
                         if imgui.button("Settings"): m_state["settings_open"] = not m_state["settings_open"]
-            else:
-                imgui.text_colored("NO ACCESS", 1, 0, 0, 1)
+            else: imgui.text_colored("NO ACCESS", 1, 0, 0, 1)
             imgui.end_child(); imgui.pop_style_color()
             
             if key == "Insta_Bluetooth_Tech" and config["macros"][key]["settings_open"]:
                 imgui.indent(20)
                 imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, 0.08, 0.08, 0.09, 1.0)
-                imgui.begin_child("settings_bt", 460, 220, True) # Увеличил высоту
-                imgui.dummy(0,5); imgui.text_colored("Settings: Bluetooth Tech", 0.4, 0.6, 1.0, 1.0)
-                imgui.separator(); imgui.dummy(0,10)
-                render_keybind("Left Bind (Q)", "bt_bind_left")
-                render_keybind("Right Bind (E)", "bt_bind_right")
-                imgui.dummy(0,10)
+                imgui.begin_child("settings_bt", 460, 240, True)
+                imgui.dummy(0,5); imgui.text_colored("Settings: Bluetooth Tech", 0.4, 0.6, 1.0, 1.0); imgui.separator(); imgui.dummy(0,10)
+                render_keybind("Left Bind (Q)", "bt_bind_left"); render_keybind("Right Bind (E)", "bt_bind_right"); imgui.dummy(0,10)
                 config["bt_rotation"] = render_custom_slider("Rotation", config["bt_rotation"], 100, 1000)
                 config["bt_long_wait"] = render_custom_slider("Long Wait (1.83)", config["bt_long_wait"], 0.1, 5.0)
                 config["bt_short_wait"] = render_custom_slider("Short Wait (0.40)", config["bt_short_wait"], 0.1, 2.0)
-                # Добавил слайдер для удержания в конце
                 config["bt_end_wait"] = render_custom_slider("End Wait (2.0s)", config["bt_end_wait"], 0.1, 5.0)
                 imgui.end_child(); imgui.pop_style_color(); imgui.unindent(20)
             imgui.dummy(0, 5)
@@ -373,18 +368,14 @@ def render_menu(w_screen, h_screen):
         imgui.dummy(0, 10); _, config["crosshair_dot"] = imgui.checkbox("Dot", config["crosshair_dot"]); _, config["crosshair_t_style"] = imgui.checkbox("T-Style", config["crosshair_t_style"])
 
     elif config["active_tab"] == "Changer":
-        imgui.text("Changer"); imgui.dummy(0, 10)
-        config["skinchanger_enabled"] = render_custom_toggle("Active", config["skinchanger_enabled"])
+        imgui.text("Changer"); imgui.dummy(0, 10); config["skinchanger_enabled"] = render_custom_toggle("Active", config["skinchanger_enabled"])
 
     elif config["active_tab"] == "Info":
         imgui.text("News"); imgui.separator(); imgui.dummy(0, 10)
         for item in CTX_DATABASE.get("news", []):
-            imgui.text_colored(item.get("title", ""), 0.9, 0.9, 0.9, 1.0)
-            imgui.text_wrapped(item.get("content", "")); imgui.separator()
+            imgui.text_colored(item.get("title", ""), 0.9, 0.9, 0.9, 1.0); imgui.text_wrapped(item.get("content", "")); imgui.separator()
 
     imgui.end_group()
-    
-    # POPUP
     if config["popup_open_request"]: imgui.open_popup("PinInput"); config["popup_open_request"] = False
     if imgui.begin_popup_modal("PinInput", True, flags=imgui.WINDOW_ALWAYS_AUTO_RESIZE)[0]:
         imgui.text("PIN:"); _, config["pin_input"] = imgui.input_text("##pin", config["pin_input"], 10)
@@ -396,7 +387,6 @@ def render_menu(w_screen, h_screen):
         imgui.same_line(); 
         if imgui.button("Cancel"): imgui.close_current_popup()
         imgui.end_popup()
-
     imgui.end()
 
 # ==========================================
@@ -404,15 +394,10 @@ def render_menu(w_screen, h_screen):
 # ==========================================
 def main():
     if not glfw.init(): return
-    glfw.window_hint(glfw.FLOATING, True)
-    glfw.window_hint(glfw.DECORATED, False)
-    glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, True)
-    
-    user32 = ctypes.windll.user32
-    w_screen, h_screen = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
-    window = glfw.create_window(w_screen, h_screen, "Raku", None, None)
+    glfw.window_hint(glfw.FLOATING, True); glfw.window_hint(glfw.DECORATED, False); glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, True)
+    user32 = ctypes.windll.user32; w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+    window = glfw.create_window(w, h, "Raku", None, None)
     glfw.make_context_current(window); glfw.swap_interval(1)
-    
     imgui.create_context(); impl = GlfwRenderer(window); apply_raku_theme()
     threading.Thread(target=logic_thread, daemon=True).start()
 
@@ -422,26 +407,17 @@ def main():
             config["menu_open"] = not config["menu_open"]
             glfw.set_window_attrib(window, glfw.MOUSE_PASSTHROUGH, not config["menu_open"])
             time.sleep(0.2)
-
-        impl.process_inputs()
-        imgui.new_frame()
+        impl.process_inputs(); imgui.new_frame()
         gl.glClearColor(0, 0, 0, 0); gl.glClear(gl.GL_COLOR_BUFFER_BIT)
-
-        if config["menu_open"]: render_menu(w_screen, h_screen)
-        
+        if config["menu_open"]: render_menu(w, h)
         if config["crosshair_enabled"]:
-            dl = imgui.get_background_draw_list()
-            cx, cy = w_screen/2, h_screen/2
-            col = imgui.get_color_u32_rgba(*config["crosshair_color"])
+            dl = imgui.get_background_draw_list(); cx, cy = w/2, h/2; col = imgui.get_color_u32_rgba(*config["crosshair_color"])
             sz, th, gap = config["crosshair_size"], config["crosshair_thickness"], config["crosshair_gap"]
-            dl.add_line(cx - sz - gap, cy, cx - gap, cy, col, th)
-            dl.add_line(cx + gap, cy, cx + sz + gap, cy, col, th)
-            dl.add_line(cx, cy + gap, cx, cy + sz + gap, col, th)
-            if not config["crosshair_t_style"]: dl.add_line(cx, cy - sz - gap, cx, cy - gap, col, th)
-            if config["crosshair_dot"]: dl.add_rect_filled(cx - th/2, cy - th/2, cx + th/2, cy + th/2, col)
-            
+            dl.add_line(cx-sz-gap, cy, cx-gap, cy, col, th); dl.add_line(cx+gap, cy, cx+sz+gap, cy, col, th)
+            dl.add_line(cx, cy+gap, cx, cy+sz+gap, col, th)
+            if not config["crosshair_t_style"]: dl.add_line(cx, cy-sz-gap, cx, cy-gap, col, th)
+            if config["crosshair_dot"]: dl.add_rect_filled(cx-th/2, cy-th/2, cx+th/2, cy+th/2, col)
         imgui.render(); impl.render(imgui.get_draw_data()); glfw.swap_buffers(window)
-
     config["running"] = False; impl.shutdown(); glfw.terminate()
 
 if __name__ == "__main__":
