@@ -5,10 +5,10 @@
   "message": "Update 1.5: Added Aimbot logic",
   "users": {
     "Kuka": {
-      "password": "123",
+      "password": "qwe",
       "status": "Admin",
       "hwid": "RESET", 
-      "avatar_url": "https://files.catbox.moe/d1smes.jpg",
+      "avatar_url": "https://github.com/Kuka0v/RakuCheat/blob/main/avatars/Kuka.jpg",
       "expiry": "Lifetime"
     },
     "UserFree": {
@@ -22,8 +22,33 @@
       "password": "0000",
       "status": "Tester",
       "hwid": "RESET",
-      "avatar_url": "https://files.catbox.moe/kzvtc7.jpg",
+      "avatar_url": "https://github.com/Kuka0v/RakuCheat/blob/main/avatars/kw1ky.jpg",
       "expiry": "2024-12-30"
     }
-  }
+  },
+
+  "macro": {
+    "Insta_Hugtech": {
+      "name": "Insta Hug tech",
+      "allow": "Admin, Tester, Free",
+      "pin": "none",
+      "patch": "none"
+    },
+    "Insta_Bluetooth_Tech": {
+      "name": "Insta Bluetooth Tech",
+      "allow": "Admin, Tester",
+      "pin": "1234",
+      "patch": "RakuCheat/macro/insta_bluetooth_tech.py"
+    }
+  },
+  "news": [
+    {
+      "title": "Welcome to RakuCheat!",
+      "content": "We are excited to have you here. Stay tuned for updates and new features."
+    },
+    {
+      "title": "Update 1.5 Released",
+      "content": "We have added new Macro logic!  Check out the Insta Hug tech macro for instant hugs!"
+    }
+  ]
 }
