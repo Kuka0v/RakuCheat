@@ -87,7 +87,6 @@ def on_key_event(e):
     # Эта функция вызывается сама при нажатии любой кнопки
     if config["binding_mode"] and e.event_type == 'down':
         if e.name != 'esc':
-            print(f"Rebinding {config['binding_mode']} to {e.name}")
             config[config["binding_mode"]] = e.name.upper()
         config["binding_mode"] = None
 
@@ -182,7 +181,7 @@ def apply_raku_theme():
     colors[imgui.COLOR_WINDOW_BACKGROUND] = (0, 0, 0, 0)
     colors[imgui.COLOR_BORDER] = (0, 0, 0, 0)
     colors[imgui.COLOR_TEXT] = (0.90, 0.90, 0.90, 1.00)
-    colors[imgui.COLOR_BUTTON] = (0.15, 0.15, 0.18, 1.00) # Чуть светлее
+    colors[imgui.COLOR_BUTTON] = (0.15, 0.15, 0.18, 1.00)
     colors[imgui.COLOR_BUTTON_HOVERED] = (0.20, 0.20, 0.24, 1.00)
     colors[imgui.COLOR_BUTTON_ACTIVE] = (0.25, 0.25, 0.30, 1.00)
     colors[imgui.COLOR_HEADER] = (0.20, 0.20, 0.25, 1.00)
@@ -261,7 +260,6 @@ def render_menu(w_screen, h_screen):
     flags = imgui.WINDOW_NO_TITLE_BAR | imgui.WINDOW_NO_RESIZE | imgui.WINDOW_NO_SCROLLBAR
     imgui.begin("Main", True, flags)
     
-    # Фон меню
     p_min = imgui.get_window_position()
     p_max = (p_min.x + menu_w, p_min.y + menu_h)
     draw_list = imgui.get_window_draw_list()
@@ -287,7 +285,6 @@ def render_menu(w_screen, h_screen):
     imgui.text_colored("Other", 0.3, 0.3, 0.3, 1.0)
     render_sidebar_btn("Info / News", "Info")
     
-    # Профиль
     y_space = menu_h - imgui.get_cursor_pos_y() - 50
     imgui.dummy(0, y_space)
     imgui.separator()
@@ -295,7 +292,6 @@ def render_menu(w_screen, h_screen):
     imgui.text(f"User: {CTX_USER}")
     status_col = (0, 1, 0, 1) if CTX_STATUS == "Admin" else (0.4, 0.6, 1, 1)
     imgui.text_colored(f"Status: {CTX_STATUS}", *status_col)
-    
     imgui.unindent(10)
     imgui.end_group()
     imgui.same_line()
@@ -308,65 +304,163 @@ def render_menu(w_screen, h_screen):
     if config["active_tab"] == "Macro":
         imgui.text_colored("Available Macros", 0.8, 0.8, 0.8, 1.0)
         imgui.dummy(0, 10)
-        
         for key, data in CTX_DATABASE.get("macro", {}).items():
             name = data.get("name", key)
             allow_list = data.get("allow", "")
             pin = data.get("pin", "none")
-            
-            # Проверка прав
             is_allowed = any(role.strip() == CTX_STATUS for role in allow_list.split(","))
             
             imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, 0.1, 0.1, 0.12, 1.0)
             imgui.begin_child(f"card_{key}", 500, 60, True)
-            
             imgui.set_cursor_pos((15, 12))
             imgui.text(name)
             imgui.set_cursor_pos((15, 32))
             
             if is_allowed:
                 m_state = config["macros"][key]
-                
-                # Логика ПИНа
                 if pin != "none" and not m_state["unlocked"]:
                     if imgui.button(f"UNLOCK (PIN)##{key}"):
                         config["pin_target"] = key
-                        config["popup_open_request"] = True # Просим открыть попап
+                        config["popup_open_request"] = True
                 else:
-                    # Логика Включения
                     imgui.set_cursor_pos_y(15)
                     imgui.dummy(380, 0); imgui.same_line()
                     new_state = render_custom_toggle(f"##tgl_{key}", m_state["enabled"])
-                    if new_state != m_state["enabled"]:
-                        m_state["enabled"] = new_state
-                        
-                    # Кнопка настроек
+                    if new_state != m_state["enabled"]: m_state["enabled"] = new_state
                     if key == "Insta_Bluetooth_Tech":
                         imgui.same_line()
-                        if imgui.button("Settings"):
-                            m_state["settings_open"] = not m_state["settings_open"]
+                        if imgui.button("Settings"): m_state["settings_open"] = not m_state["settings_open"]
             else:
                 imgui.text_colored("NO ACCESS", 1, 0, 0, 1)
-
             imgui.end_child()
             imgui.pop_style_color()
             
-            # Выпадающее меню настроек
             if key == "Insta_Bluetooth_Tech" and config["macros"][key]["settings_open"]:
                 imgui.indent(20)
                 imgui.push_style_color(imgui.COLOR_CHILD_BACKGROUND, 0.08, 0.08, 0.09, 1.0)
                 imgui.begin_child("settings_bt", 460, 180, True)
-                imgui.dummy(0,5)
-                imgui.text_colored("Settings: Bluetooth Tech", 0.4, 0.6, 1.0, 1.0)
-                imgui.separator()
-                imgui.dummy(0,10)
-                
+                imgui.dummy(0,5); imgui.text_colored("Settings: Bluetooth Tech", 0.4, 0.6, 1.0, 1.0)
+                imgui.separator(); imgui.dummy(0,10)
                 render_keybind("Left Bind (Q)", "bt_bind_left")
                 render_keybind("Right Bind (E)", "bt_bind_right")
                 imgui.dummy(0,10)
-                
                 config["bt_rotation"] = render_custom_slider("Rotation", config["bt_rotation"], 100, 1000)
                 config["bt_long_wait"] = render_custom_slider("Long Wait", config["bt_long_wait"], 0.1, 5.0)
                 config["bt_short_wait"] = render_custom_slider("Short Wait", config["bt_short_wait"], 0.1, 2.0)
-                
                 imgui.end_child()
+                imgui.pop_style_color()
+                imgui.unindent(20)
+            imgui.dummy(0, 5)
+
+    elif config["active_tab"] == "Lag Switch":
+        imgui.text("Lag Switch Configuration")
+        imgui.dummy(0, 10)
+        config["lag_enabled"] = render_custom_toggle("Active", config["lag_enabled"])
+        imgui.dummy(0, 10)
+        render_keybind("Bind Key", "lag_bind")
+        imgui.dummy(0, 5)
+        config["lag_time"] = render_custom_slider("Duration (s)", config["lag_time"], 0.1, 5.0)
+
+    elif config["active_tab"] == "Crosshair":
+        imgui.text("Visual Settings")
+        imgui.dummy(0, 10)
+        config["crosshair_enabled"] = render_custom_toggle("Enable Crosshair", config["crosshair_enabled"])
+        imgui.dummy(0, 10)
+        imgui.text("Color"); imgui.same_line(120)
+        _, config["crosshair_color"] = imgui.color_edit4("##clr", *config["crosshair_color"], flags=imgui.COLOR_EDIT_NO_INPUTS)
+        imgui.dummy(0, 10)
+        config["crosshair_size"] = render_custom_slider("Size", config["crosshair_size"], 1.0, 50.0)
+        config["crosshair_thickness"] = render_custom_slider("Thickness", config["crosshair_thickness"], 1.0, 10.0)
+        config["crosshair_gap"] = render_custom_slider("Gap", config["crosshair_gap"], 0.0, 20.0)
+        imgui.dummy(0, 10)
+        _, config["crosshair_dot"] = imgui.checkbox("Center Dot", config["crosshair_dot"])
+        _, config["crosshair_t_style"] = imgui.checkbox("T-Style", config["crosshair_t_style"])
+
+    elif config["active_tab"] == "Changer":
+        imgui.text("Skin Changer")
+        imgui.dummy(0, 10)
+        config["skinchanger_enabled"] = render_custom_toggle("Active", config["skinchanger_enabled"])
+        imgui.dummy(0, 10)
+        imgui.text_colored("Status: Inventory Loaded", 0, 1, 0, 1)
+        imgui.text("Select weapon to config...")
+
+    elif config["active_tab"] == "Info":
+        imgui.text_colored("News & Updates", 0.4, 0.6, 1.0, 1.0)
+        imgui.separator()
+        imgui.dummy(0, 10)
+        for item in CTX_DATABASE.get("news", []):
+            imgui.text_colored(item.get("title", "News"), 0.9, 0.9, 0.9, 1.0)
+            imgui.text_wrapped(item.get("content", ""))
+            imgui.dummy(0, 10); imgui.separator(); imgui.dummy(0, 10)
+
+    imgui.end_group()
+    
+    if config["popup_open_request"]:
+        imgui.open_popup("PinInput")
+        config["popup_open_request"] = False
+
+    if imgui.begin_popup_modal("PinInput", True, flags=imgui.WINDOW_NO_RESIZE | imgui.WINDOW_ALWAYS_AUTO_RESIZE)[0]:
+        imgui.text("Enter PIN Code:")
+        _, config["pin_input"] = imgui.input_text("##pin", config["pin_input"], 10)
+        if config["pin_error"]: imgui.text_colored("Incorrect PIN!", 1, 0, 0, 1)
+        imgui.dummy(0, 5)
+        if imgui.button("Unlock", 120, 0):
+            target = config["pin_target"]
+            real_pin = CTX_DATABASE["macro"][target]["pin"]
+            if config["pin_input"] == real_pin:
+                config["macros"][target]["unlocked"] = True
+                config["pin_error"] = False
+                config["pin_input"] = ""
+                imgui.close_current_popup()
+            else: config["pin_error"] = True
+        imgui.same_line()
+        if imgui.button("Cancel", 120, 0): imgui.close_current_popup()
+        imgui.end_popup()
+
+    imgui.end()
+
+def main():
+    if not glfw.init(): return
+    glfw.window_hint(glfw.FLOATING, True)
+    glfw.window_hint(glfw.DECORATED, False)
+    glfw.window_hint(glfw.TRANSPARENT_FRAMEBUFFER, True) 
+    user32 = ctypes.windll.user32
+    w_screen, h_screen = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+    window = glfw.create_window(w_screen, h_screen, "Raku Overlay", None, None)
+    glfw.make_context_current(window)
+    glfw.swap_interval(1)
+    imgui.create_context()
+    impl = GlfwRenderer(window)
+    apply_raku_theme()
+    threading.Thread(target=logic_thread, daemon=True).start()
+
+    while not glfw.window_should_close(window):
+        glfw.poll_events()
+        if keyboard.is_pressed('insert'):
+            config["menu_open"] = not config["menu_open"]
+            glfw.set_window_attrib(window, glfw.MOUSE_PASSTHROUGH, not config["menu_open"])
+            time.sleep(0.2)
+        impl.process_inputs()
+        imgui.new_frame()
+        gl.glClearColor(0, 0, 0, 0)
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT)
+        if config["menu_open"]: render_menu(w_screen, h_screen)
+        if config["crosshair_enabled"]:
+            dl = imgui.get_background_draw_list()
+            cx, cy = w_screen/2, h_screen/2
+            col = imgui.get_color_u32_rgba(*config["crosshair_color"])
+            sz, th, gap = config["crosshair_size"], config["crosshair_thickness"], config["crosshair_gap"]
+            dl.add_line(cx - sz - gap, cy, cx - gap, cy, col, th)
+            dl.add_line(cx + gap, cy, cx + sz + gap, cy, col, th)
+            dl.add_line(cx, cy + gap, cx, cy + sz + gap, col, th)
+            if not config["crosshair_t_style"]: dl.add_line(cx, cy - sz - gap, cx, cy - gap, col, th)
+            if config["crosshair_dot"]: dl.add_rect_filled(cx - th/2, cy - th/2, cx + th/2, cy + th/2, col)
+        imgui.render()
+        impl.render(imgui.get_draw_data())
+        glfw.swap_buffers(window)
+    config["running"] = False
+    impl.shutdown()
+    glfw.terminate()
+
+if __name__ == "__main__":
+    main()
