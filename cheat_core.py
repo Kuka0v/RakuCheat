@@ -1,5 +1,5 @@
 # cheat_core.py
-# FIX 4.0: PERFECT SYNC (PAUSE=0, Threaded Execution)
+# FIX 4.1: LAG SWITCH WORKING (Netsh) + 15s Duration + PERFECT SYNC
 
 import glfw
 import OpenGL.GL as gl
@@ -14,10 +14,11 @@ import winsound
 import os
 import pydirectinput
 import requests
+import subprocess  # Нужно для управления фаерволом
 
-# === ВАЖНЕЙШАЯ НАСТРОЙКА ИЗ ТВОЕГО СКРИПТА ===
+# === ВАЖНЕЙШАЯ НАСТРОЙКА ===
 pydirectinput.PAUSE = 0  # Убирает задержку между действиями ввода
-# ==============================================
+# ===========================
 
 # ==========================================
 # 1. ПОЛУЧЕНИЕ ДАННЫХ
@@ -33,7 +34,7 @@ if not CTX_DATABASE:
             "Insta_Hugtech": {"name": "Insta Hug tech", "allow": "Admin, Tester, Free", "pin": "none"}
         },
         "news": [
-            {"title": "Fix 4.0 Perfect Sync", "content": "pydirectinput.PAUSE = 0 enabled. Logic is now 1:1 with reference."}
+            {"title": "Fix 4.1 Lag Switch", "content": "Lag Switch now cuts connection via Windows Firewall. Max duration: 15s. RUN AS ADMIN!"}
         ]
     }
 
@@ -61,15 +62,15 @@ config = {
 
     # --- SETTINGS (Insta Bluetooth Tech) ---
     "bt_rotation": 400.0,
-    "bt_long_wait": 1.83, # Как в скрипте
-    "bt_short_wait": 0.40, # Как в скрипте
-    "bt_click_dur": 0.05,  # Клик 0.05
-    "bt_end_wait": 2.00,   # Удержание в конце 2 сек
+    "bt_long_wait": 1.83, 
+    "bt_short_wait": 0.40, 
+    "bt_click_dur": 0.05,  
+    "bt_end_wait": 2.00,   
     
     # --- LAG SWITCH ---
     "lag_enabled": False,     
     "lag_active": False,      
-    "lag_time": 2.0,
+    "lag_time": 2.0,       # Дефолтное время
     "lag_start_time": 0.0,
     
     # --- VISUALS ---
@@ -88,7 +89,7 @@ for key in CTX_DATABASE.get("macro", {}):
     config["macros"][key] = {"enabled": False, "unlocked": False, "settings_open": False}
 
 # ==========================================
-# 3. СИСТЕМА БИНДОВ
+# 3. СИСТЕМА БИНДОВ И ФУНКЦИИ СЕТИ
 # ==========================================
 def on_key_event(e):
     if config["binding_mode"] and e.event_type == 'down':
@@ -98,30 +99,41 @@ def on_key_event(e):
 
 keyboard.hook(on_key_event)
 
+def set_lag_state(active):
+    """
+    Управляет правилом брандмауэра для лагсвитча.
+    Блокирует исходящий UDP трафик.
+    """
+    rule_name = "RakuLagSwitch"
+    try:
+        if active:
+            # Создаем правило блокировки
+            cmd = f'netsh advfirewall firewall add rule name="{rule_name}" dir=out action=block protocol=UDP'
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            # Удаляем правило
+            cmd = f'netsh advfirewall firewall delete rule name="{rule_name}"'
+            subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
 # ==========================================
-# 4. ЛОГИКА МАКРОСОВ (ТОЧЬ-В-ТОЧЬ)
+# 4. ЛОГИКА МАКРОСОВ
 # ==========================================
 def perform_bt_sequence(right):
-    """
-    Эта функция запускается в отдельном потоке, как в твоем скрипте.
-    """
-    # Забираем актуальные настройки
     rot = int(config["bt_rotation"])
     long_w = config["bt_long_wait"]
     short_w = config["bt_short_wait"]
     click_d = config["bt_click_dur"]
     end_w = config["bt_end_wait"]
 
-    # 1. Зажимаем ПКМ
     pydirectinput.mouseDown(button='right')
-    time.sleep(long_w) # 1.83
+    time.sleep(long_w)
     
-    # 2. ПЕРВЫЙ КЛИК ЛКМ
     pydirectinput.mouseDown(button='left')
-    time.sleep(click_d) # 0.05
+    time.sleep(click_d)
     pydirectinput.mouseUp(button='left')
     
-    # 3. ЗАЖИМАЕМ КНОПКИ
     if right:
         pydirectinput.keyDown('a')
         pydirectinput.keyDown('w')
@@ -129,21 +141,17 @@ def perform_bt_sequence(right):
         pydirectinput.keyDown('d')
         pydirectinput.keyDown('w')
         
-    time.sleep(short_w) # 0.40
+    time.sleep(short_w)
     
-    # 4. ПОВОРОТ
     move_val = rot if right else -rot
     pydirectinput.moveRel(move_val, 0, relative=True, _pause=False)
     
-    # 5. ВТОРОЙ КЛИК ЛКМ (Теперь без задержки перед ним, т.к. PAUSE=0)
     pydirectinput.mouseDown(button='left')
-    time.sleep(click_d) # 0.05
+    time.sleep(click_d)
     pydirectinput.mouseUp(button='left')
     
-    # 6. ДЕРЖИМ КЛАВИШИ (2 сек)
     time.sleep(end_w)
     
-    # 7. ОТПУСКАЕМ
     if right:
         pydirectinput.keyUp('a')
         pydirectinput.keyUp('w')
@@ -159,22 +167,18 @@ def perform_hug_tech():
     pydirectinput.mouseUp(button='left')
 
 def logic_thread():
+    # Сброс правил при старте на всякий случай
+    set_lag_state(False)
+    
     while config["running"]:
         # --- Insta Bluetooth Tech ---
         if config["macros"].get("Insta_Bluetooth_Tech", {}).get("enabled", False):
-            
-            # --- RIGHT (E) ---
             if keyboard.is_pressed(config["bt_bind_right"]):
-                # 1. Сначала дергаем мышь (Pre-move)
                 pydirectinput.moveRel(-int(config["bt_rotation"]), 0, relative=True, _pause=False)
-                # 2. Запускаем последовательность В НОВОМ ПОТОКЕ (как в твоем скрипте)
-                # Это гарантирует, что тайминги внутри функции не собьются основным циклом
                 t = threading.Thread(target=perform_bt_sequence, args=(True,))
                 t.start()
-                # 3. Ждем немного, чтобы не спамить (защита от дребезга)
                 time.sleep(0.5)
 
-            # --- LEFT (Q) ---
             elif keyboard.is_pressed(config["bt_bind_left"]):
                 pydirectinput.moveRel(int(config["bt_rotation"]), 0, relative=True, _pause=False)
                 t = threading.Thread(target=perform_bt_sequence, args=(False,))
@@ -188,26 +192,35 @@ def logic_thread():
                 perform_hug_tech()
                 time.sleep(0.2)
 
-        # --- Lag Switch ---
+        # --- Lag Switch (ИСПРАВЛЕНО) ---
         if config["lag_enabled"]:
             if keyboard.is_pressed(config["lag_bind"]):
                 config["lag_active"] = not config["lag_active"]
+                
+                # Применяем состояние к сети
+                set_lag_state(config["lag_active"])
+                
                 if config["lag_active"]:
                     config["lag_start_time"] = time.time()
-                    try: winsound.Beep(1000, 200)
+                    try: winsound.Beep(1000, 200) # ВКЛ
                     except: pass
                 else:
-                    try: winsound.Beep(600, 200)
+                    try: winsound.Beep(500, 200) # ВЫКЛ
                     except: pass
                 time.sleep(0.3)
             
+            # Таймер авто-выключения
             if config["lag_active"]:
                 if (time.time() - config["lag_start_time"]) > config["lag_time"]:
                     config["lag_active"] = False
-                    try: winsound.Beep(600, 200)
+                    set_lag_state(False) # Разблокировать сеть
+                    try: winsound.Beep(500, 200)
                     except: pass
 
-        time.sleep(0.001) # Уменьшил sleep для более быстрой реакции
+        time.sleep(0.001)
+        
+    # Сброс правил при выходе
+    set_lag_state(False)
 
 # ==========================================
 # 5. UI КОМПОНЕНТЫ
@@ -353,9 +366,12 @@ def render_menu(w_screen, h_screen):
 
     elif config["active_tab"] == "Lag Switch":
         imgui.text("Lag Switch"); imgui.dummy(0, 10)
+        imgui.text_colored("REQUIRES ADMIN PERMISSIONS", 1.0, 0.2, 0.2, 1.0)
+        imgui.dummy(0, 5)
         config["lag_enabled"] = render_custom_toggle("Active", config["lag_enabled"]); imgui.dummy(0, 10)
         render_keybind("Bind Key", "lag_bind"); imgui.dummy(0, 5)
-        config["lag_time"] = render_custom_slider("Duration (s)", config["lag_time"], 0.1, 5.0)
+        # Увеличено до 15.0
+        config["lag_time"] = render_custom_slider("Duration (s)", config["lag_time"], 0.1, 15.0)
 
     elif config["active_tab"] == "Crosshair":
         imgui.text("Visuals"); imgui.dummy(0, 10)
@@ -421,4 +437,8 @@ def main():
     config["running"] = False; impl.shutdown(); glfw.terminate()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    finally:
+        # ГАРАНТИРОВАННАЯ ОЧИСТКА ПРАВИЛ ПРИ ВЫЛЕТЕ
+        set_lag_state(False)
